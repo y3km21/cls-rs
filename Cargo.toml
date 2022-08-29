@@ -10,3 +10,7 @@ encoding_rs ={version="0.8"}
 serde = {version = "1", features=["derive"]}
 bincode={version = "1"}
 serde_bytes = "0.11"
+nom = "7"
+bytes = "1"
+zerocopy = "0.6"
+bytemuck = "1.12"

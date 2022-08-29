@@ -1,4 +1,5 @@
 pub mod colorset;
+pub mod utils;
 
 #[cfg(test)]
 mod tests {
