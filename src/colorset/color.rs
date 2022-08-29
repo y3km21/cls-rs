@@ -3,9 +3,10 @@
 //!
 //!
 
+use crate::utils::ClsSize;
 pub use crate::utils::ExtendBytesMut;
 use bytemuck::try_cast_slice;
-use bytes::BytesMut;
+pub use bytes::BytesMut;
 use nom::{
     bytes::complete::take,
     error::FromExternalError,
@@ -54,17 +55,28 @@ impl PartialEq for ColorSegment {
     }
 }
 
-impl ExtendBytesMut for ColorSegment {
-    fn extend_bytes(&self, extended: &mut BytesMut) {
-        // Extend Bytes size of Color Segment
-        let color_size = 8u32;
+impl ClsSize for ColorSegment {
+    fn size_in_cls(&self) -> u32 {
+        4 + self.size_contents_in_cls()
+    }
+
+    fn size_contents_in_cls(&self) -> u32 {
+        let color_size = self.color.size_in_cls();
+        let color_name_exists_flag_size = 4u32; // u32
         let color_name_size = if let Some(color_name) = self.color_name.as_ref() {
-            2 // u16 of color name bytes size
-             + color_name.get_bytes_len_utf16() as u32
+            color_name.size_in_cls()
         } else {
             0
         };
-        extended.extend_from_slice((color_size + color_name_size).as_bytes());
+
+        color_size + color_name_exists_flag_size + color_name_size
+    }
+}
+
+impl ExtendBytesMut for ColorSegment {
+    fn extend_bytes(&self, extended: &mut BytesMut) {
+        // Extend Size Header
+        extended.extend_from_slice(self.size_contents_in_cls().as_bytes());
 
         // Extend Color
         self.color.extend_bytes(extended);
@@ -82,6 +94,7 @@ impl ExtendBytesMut for ColorSegment {
     }
 }
 
+/// Deserialize ColorSegment from &\[u8]
 pub fn bytes_color_segment(input: &[u8]) -> IResult<&[u8], ColorSegment> {
     let (input, _) = le_u32(input)?;
     let (input, color) = bytes_color(input)?;
@@ -146,6 +159,12 @@ impl Color {
     }
 }
 
+impl ClsSize for Color {
+    fn size_contents_in_cls(&self) -> u32 {
+        4
+    }
+}
+
 // Serialize Color
 impl ExtendBytesMut for Color {
     fn extend_bytes(&self, extended: &mut BytesMut) {
@@ -157,7 +176,7 @@ impl ExtendBytesMut for Color {
     }
 }
 
-// Deserialize Color
+/// Deserialize Color from &\[u8]
 pub fn bytes_color(input: &[u8]) -> IResult<&[u8], Color> {
     let (input, (red, green, blue, tp)) = tuple((le_u8, le_u8, le_u8, le_u8))(input)?;
 
@@ -194,16 +213,22 @@ impl ColorName {
             Ok(())
         }
     }
+}
 
-    pub fn get_bytes_len_utf16(&self) -> u16 {
-        self.bytes_len_utf16
+impl ClsSize for ColorName {
+    fn size_in_cls(&self) -> u32 {
+        2 + self.size_contents_in_cls()
+    }
+
+    fn size_contents_in_cls(&self) -> u32 {
+        self.bytes_len_utf16 as u32
     }
 }
 
 // Serialize ColorName
 impl ExtendBytesMut for ColorName {
     fn extend_bytes(&self, extended: &mut BytesMut) {
-        // byte size of Color Name
+        // Extend size header
         extended.extend_from_slice(&self.bytes_len_utf16.as_bytes());
 
         // Color Name(utf16le)
@@ -216,7 +241,7 @@ impl ExtendBytesMut for ColorName {
     }
 }
 
-// Deserialize ColorName
+/// Deserialize ColorName from &\[u8]
 pub fn bytes_color_name(input: &[u8]) -> IResult<&[u8], ColorName> {
     use nom::{error::Error, error::ErrorKind::Fail, Err::Failure};
 
