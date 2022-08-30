@@ -3,10 +3,9 @@
 //!
 //!
 
-use crate::utils::ClsSize;
-pub use crate::utils::ExtendBytesMut;
+use crate::utils::{ClsSize, ExtendBytesMut};
 use bytemuck::try_cast_slice;
-pub use bytes::BytesMut;
+use bytes::BytesMut;
 use nom::{
     bytes::complete::take,
     error::FromExternalError,
@@ -14,10 +13,7 @@ use nom::{
     sequence::tuple,
     IResult,
 };
-use std::error::Error;
-use std::fmt::Display;
-use std::ops::Deref;
-use std::{cmp::PartialEq, str::EncodeUtf16};
+use std::{cmp::PartialEq, error::Error, fmt::Display, ops::Deref};
 use zerocopy::AsBytes;
 
 /// ColorSegment
@@ -30,6 +26,21 @@ pub struct ColorSegment {
 impl ColorSegment {
     pub fn new(color: Color, color_name: Option<ColorName>) -> Self {
         ColorSegment { color, color_name }
+    }
+
+    pub fn with_val(
+        red: u8,
+        green: u8,
+        blue: u8,
+        transparency: bool,
+        color_name: Option<&str>,
+    ) -> Result<Self, ColorNameError> {
+        let color = Color::new(red, green, blue, transparency);
+
+        match color_name {
+            None => Ok(ColorSegment::new(color, None)),
+            Some(val) => ColorName::with_str(val).map(|cn| ColorSegment::new(color, Some(cn))),
+        }
     }
 
     pub fn get_color_mut_ref(&mut self) -> &mut Color {
@@ -199,6 +210,13 @@ impl ColorName {
             str: String::new(),
             bytes_len_utf16: 0,
         }
+    }
+
+    pub fn with_str(val: &str) -> Result<Self, ColorNameError> {
+        let mut cn = Self::new();
+        cn.set_str(val)?;
+
+        Ok(cn)
     }
 
     pub fn set_str(&mut self, val: &str) -> Result<(), ColorNameError> {

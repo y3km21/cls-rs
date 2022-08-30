@@ -2,9 +2,8 @@ use self::common::{color_name_setup, color_setup};
 use bytes::BytesMut;
 use cls_rs::colorset::color::{
     bytes_color, bytes_color_name, bytes_color_segment, Color, ColorName, ColorSegment,
-    ExtendBytesMut,
 };
-
+use cls_rs::utils::ExtendBytesMut;
 mod common {
     use super::*;
     pub fn color_setup(transparency: bool) -> Color {

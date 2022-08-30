@@ -4,15 +4,13 @@
 
 use crate::utils::{ClsSize, ExtendBytesMut};
 
-use std::error::Error;
-use std::fmt::Display;
-use std::ops::Deref;
+use std::{error::Error, fmt::Display, ops::Deref};
 
 use encoding_rs as enc;
 use nom::{
     bytes::complete::take,
     error::FromExternalError,
-    number::complete::{le_u16, le_u32, le_u8},
+    number::complete::{le_u16, le_u32},
     IResult,
 };
 use zerocopy::AsBytes;
