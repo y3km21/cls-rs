@@ -14,10 +14,10 @@ use nom::{
     sequence::tuple,
     IResult,
 };
-use std::cmp::PartialEq;
 use std::error::Error;
 use std::fmt::Display;
 use std::ops::Deref;
+use std::{cmp::PartialEq, str::EncodeUtf16};
 use zerocopy::AsBytes;
 
 /// ColorSegment
@@ -228,7 +228,7 @@ impl ClsSize for ColorName {
 // Serialize ColorName
 impl ExtendBytesMut for ColorName {
     fn extend_bytes(&self, extended: &mut BytesMut) {
-        // Extend size header
+        // Extend bytesize header
         extended.extend_from_slice(&self.bytes_len_utf16.as_bytes());
 
         // Color Name(utf16le)
@@ -237,6 +237,8 @@ impl ExtendBytesMut for ColorName {
             .encode_utf16()
             .map(|utf16| utf16.to_le_bytes())
             .flatten();
+
+        // extend utf16_bytes
         extended.extend(utf16_bytes_iter);
     }
 }
