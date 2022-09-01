@@ -1,0 +1,12 @@
+{
+    /** settings.sub */
+    "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+    "rust-analyzer.cargo.features": [
+        "web"
+    ],
+    /** settings.sub */
+    "[toml]": {
+        "editor.defaultFormatter": "be5invis.toml"
+    },
+    "rust-analyzer.cargo.allFeatures": false
+}

@@ -1,0 +1,15 @@
+[tasks.wasm]
+args = [
+  "build",
+  "--target",
+  "web",
+  ".",
+  "--out-dir",
+  "pkg",
+  "--out-name",
+  "cls_rs_wasm",
+  "--",
+  "--features",
+  "web",
+]
+command = "wasm-pack"

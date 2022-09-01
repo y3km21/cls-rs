@@ -1,16 +1,40 @@
 [package]
+authors = ["y3km21 <y3km21@gmail.com>"]
+edition = "2021"
+license = "MIT"
 name = "cls-rs"
 version = "0.1.0"
-edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+web = ["dep:wasm-bindgen", "dep:wasm-logger", "console_error_panic_hook", "dep:serde-wasm-bindgen", "dep:js-sys"]
+
 [dependencies]
-encoding_rs ={version="0.8"}
-serde = {version = "1", features=["derive"]}
-bincode={version = "1"}
-serde_bytes = "0.11"
-nom = "7"
-bytes = "1"
-zerocopy = "0.6"
 bytemuck = "1.12"
+bytes = "1"
+encoding_rs = "0.8"
+log = "0.4"
+nom = "7"
+num-traits = "0.2"
+serde = {version = "1", features = ["derive"]}
+zerocopy = "0.6"
+
+# web
+console_error_panic_hook = {version = "0.1", optional = true}
+js-sys = {versin = "0.3", optional = true}
+serde-wasm-bindgen = {version = "0.4", optional = true}
+wasm-bindgen = {version = "0.2", features = ["serde-serialize"], optional = true}
+wasm-logger = {version = "0.2", optional = true}
+wee_alloc = {version = "0.4", optional = true}
+
+[dev-dependencies]
+wasm-bindgen-test = {version = "0.3"}
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"

@@ -1,5 +1,3 @@
-use encoding_rs as enc;
-
 use bytes::BytesMut;
 use cls_rs::{colorset::name::*, utils::ExtendBytesMut};
 

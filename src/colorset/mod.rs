@@ -4,27 +4,37 @@ pub mod color;
 pub mod name;
 
 use color::{bytes_color_segment, Color, ColorSegment};
+use js_sys::{Boolean, Number};
 use name::{bytes_colorset_name, ColorsetName};
 use zerocopy::AsBytes;
 
-use crate::utils::{ClsSize, ExtendBytesMut};
+use crate::utils::{cast_js_number, ClsSize, ExtendBytesMut};
 use bytes::{Bytes, BytesMut};
 use nom::{
     bytes::complete::take, error::FromExternalError, multi::fold_many0, number::complete::le_u32,
     IResult,
 };
 
-use std::ops::Deref;
+use serde::{Deserialize, Serialize};
+use std::ops::{Deref, DerefMut};
 
 const CLS_HEADER: [u8; 6] = [0x53, 0x4C, 0x43, 0x43, 0x00, 0x01];
 
-#[derive(Debug, PartialEq)]
+#[cfg(feature = "web")]
+use crate::wasm::*;
+
+use self::color::ColorName;
+
+#[cfg_attr(feature = "web", wasm_bindgen)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Colorset {
     name: ColorsetName,
     color_segments: ColorSegments,
 }
 
+#[cfg_attr(feature = "web", wasm_bindgen)]
 impl Colorset {
+    #[cfg_attr(feature = "web", wasm_bindgen(constructor))]
     pub fn new() -> Colorset {
         let mut new_colorset_name = ColorsetName::new();
         new_colorset_name.set_str("NewColorset").unwrap();
@@ -34,7 +44,46 @@ impl Colorset {
             color_segments: ColorSegments::new(),
         }
     }
+}
 
+#[cfg(feature = "web")]
+#[wasm_bindgen]
+impl Colorset {
+    #[wasm_bindgen(js_name = "getUint8Array")]
+    pub fn get_uint8_array(&self) -> Uint8Array {
+        let colorset_buf = self.as_bytes().to_vec();
+        let js_colorset_buf = serde_wasm_bindgen::to_value(&colorset_buf).unwrap();
+
+        Uint8Array::new(&js_colorset_buf)
+    }
+
+    #[wasm_bindgen(js_name = "getJSObject")]
+    pub fn get_js_object(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self).unwrap()
+    }
+
+    #[wasm_bindgen(js_name = "setColorRGB")]
+    pub fn set_color_rgb(&mut self, red: Number, green: Number, blue: Number, idx: Number) {
+        let red: u8 = cast_js_number(red).unwrap();
+        let green: u8 = cast_js_number(green).unwrap();
+        let blue: u8 = cast_js_number(blue).unwrap();
+        let idx: usize = cast_js_number(idx).unwrap();
+
+        let cs = self.color_segments.get_mut(idx).unwrap();
+        cs.get_color_mut_ref().set_rgb(red, green, blue);
+    }
+
+    #[wasm_bindgen(js_name = "setColorTransparency")]
+    pub fn set_color_transparency(&mut self, transparency: Boolean, idx: Number) {
+        let transparency = transparency.as_bool().unwrap();
+        let idx: usize = cast_js_number(idx).unwrap();
+
+        let cs = self.color_segments.get_mut(idx).unwrap();
+        cs.get_color_mut_ref().set_transparency(transparency);
+    }
+}
+
+impl Colorset {
     pub fn as_bytes(&self) -> Bytes {
         let mut colorset_bytes = BytesMut::with_capacity(self.size_in_cls() as usize);
         self.extend_bytes(&mut colorset_bytes);
@@ -87,7 +136,21 @@ pub fn bytes_colorset(input: &[u8]) -> IResult<&[u8], Colorset> {
     Ok((input, colorset))
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg(feature = "web")]
+#[wasm_bindgen(js_name = "withUint8Array")]
+pub fn with_uint8_array(arr: Uint8Array) -> Colorset {
+    let buf = arr.to_vec();
+    let (_, new_cls) = bytes_colorset(&buf).unwrap(); // Error 処理入れてどうぞ
+    new_cls
+}
+
+/// ColorSegment
+///
+///
+///
+///
+///
+#[derive(Debug, PartialEq, Serialize)]
 pub struct ColorSegments {
     val: Vec<ColorSegment>,
 }
@@ -95,7 +158,10 @@ pub struct ColorSegments {
 impl ColorSegments {
     pub fn new() -> Self {
         let mut new_color_segment_vec = Vec::<ColorSegment>::new();
-        new_color_segment_vec.push(ColorSegment::new(Color::new(0, 0, 0, true), None));
+        new_color_segment_vec.push(ColorSegment::new(
+            Color::new(0, 0, 0, true),
+            Some(ColorName::with_str("Color0").unwrap()),
+        ));
 
         ColorSegments {
             val: new_color_segment_vec,
@@ -174,5 +240,11 @@ impl Deref for ColorSegments {
     type Target = Vec<ColorSegment>;
     fn deref(&self) -> &Self::Target {
         &self.val
+    }
+}
+
+impl DerefMut for ColorSegments {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.val
     }
 }

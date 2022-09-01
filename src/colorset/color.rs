@@ -13,11 +13,12 @@ use nom::{
     sequence::tuple,
     IResult,
 };
+use serde::Serialize;
 use std::{cmp::PartialEq, error::Error, fmt::Display, ops::Deref};
 use zerocopy::AsBytes;
 
 /// ColorSegment
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ColorSegment {
     color: Color,
     color_name: Option<ColorName>,
@@ -132,8 +133,12 @@ pub fn bytes_color_segment(input: &[u8]) -> IResult<&[u8], ColorSegment> {
 
 /// Color
 ///
+///
+///
+///
+///
 /// RGB + Transparency
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct Color {
     red: u8,
     green: u8,
@@ -198,16 +203,16 @@ pub fn bytes_color(input: &[u8]) -> IResult<&[u8], Color> {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct ColorName {
-    str: String,
+    val: String,
     bytes_len_utf16: u16,
 }
 
 impl ColorName {
     pub fn new() -> Self {
         ColorName {
-            str: String::new(),
+            val: String::new(),
             bytes_len_utf16: 0,
         }
     }
@@ -226,7 +231,7 @@ impl ColorName {
         if bytes_len_utf16 > 128 {
             Err(ColorNameError::EncodedStringOver128Bytes)
         } else {
-            self.str = val.to_owned();
+            self.val = val.to_owned();
             self.bytes_len_utf16 = bytes_len_utf16 as u16;
             Ok(())
         }
@@ -251,7 +256,7 @@ impl ExtendBytesMut for ColorName {
 
         // Color Name(utf16le)
         let utf16_bytes_iter = self
-            .str
+            .val
             .encode_utf16()
             .map(|utf16| utf16.to_le_bytes())
             .flatten();
@@ -284,7 +289,7 @@ pub fn bytes_color_name(input: &[u8]) -> IResult<&[u8], ColorName> {
 impl Deref for ColorName {
     type Target = String;
     fn deref(&self) -> &Self::Target {
-        &self.str
+        &self.val
     }
 }
 

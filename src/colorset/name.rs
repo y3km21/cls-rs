@@ -13,21 +13,22 @@ use nom::{
     number::complete::{le_u16, le_u32},
     IResult,
 };
+use serde::Serialize;
 use zerocopy::AsBytes;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct ColorsetName {
-    str: String,
+    val: String,
 }
 
 impl ColorsetName {
     pub fn new() -> Self {
-        ColorsetName { str: String::new() }
+        ColorsetName { val: String::new() }
     }
 
     /// Set ColorsetName from str
     ///
-    /// [ Note ]
+    /// # Note
     /// ColorsetName has the following restrictions
     ///  - Must be a utf8 string of 192bytes or less.
     ///  - The max number of chars is 64 for 3bytes or less chars.
@@ -50,13 +51,13 @@ impl ColorsetName {
             return Err(CharCountExceeded64);
         }
 
-        self.str = val.to_owned();
+        self.val = val.to_owned();
         Ok(())
     }
 
     /// Encode utf8 to sjis
     ///
-    /// [ Note ]
+    /// # Note
     /// This method conforms to the cls file specification.
     ///     - 4 bytes unmappable utf8 char is converted to "2 whitespace"(0x20,0x20).
     ///     - Less than 4 bytes unmappable utf8 char is converted to "whitespace"(0x20).
@@ -66,10 +67,10 @@ impl ColorsetName {
         //println!("input - {}", str);
         let mut encoder = enc::SHIFT_JIS.new_encoder();
 
-        let chars_count = self.str.chars().count();
+        let chars_count = self.val.chars().count();
         let mut sjis_buf: Vec<u8> = Vec::with_capacity(chars_count * 2);
 
-        let mut input_str = self.str.as_ref();
+        let mut input_str = self.val.as_ref();
 
         loop {
             let (enc_res, offset) =
@@ -180,7 +181,7 @@ pub fn bytes_colorset_name(input: &[u8]) -> IResult<&[u8], ColorsetName> {
 impl Deref for ColorsetName {
     type Target = String;
     fn deref(&self) -> &Self::Target {
-        &self.str
+        &self.val
     }
 }
 
