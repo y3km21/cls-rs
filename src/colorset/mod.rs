@@ -46,6 +46,7 @@ impl Colorset {
     }
 }
 
+/// API for wasm
 #[cfg(feature = "web")]
 #[wasm_bindgen]
 impl Colorset {

@@ -36,6 +36,7 @@ pub fn set_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+/// Cast JS Number to Primitive num type
 pub fn cast_js_number<T: Num + NumCast>(js_number: Number) -> Option<T> {
     js_number
         .as_f64()
