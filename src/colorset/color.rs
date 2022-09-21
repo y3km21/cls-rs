@@ -236,6 +236,17 @@ impl ColorName {
             Ok(())
         }
     }
+
+    pub fn validate_str(val: &str) -> Result<(), ColorNameError> {
+        let enc_utf16 = val.encode_utf16();
+        let bytes_len_utf16 = enc_utf16.count() * 2;
+
+        if bytes_len_utf16 > 128 {
+            Err(ColorNameError::EncodedStringOver128Bytes)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl ClsSize for ColorName {

@@ -197,7 +197,9 @@ impl Display for ColorsetNameError {
             use ColorsetNameError::*;
             match self {
                 StringOver192Bytes => "String is over 192 bytes.",
-                CharCountExceeded64 => "Char count is exceeded 64",
+                CharCountExceeded64 => {
+                    "Char count is exceeded 64.(A 4bytes utf8 char is counted 2 char.)"
+                }
             }
         })
     }

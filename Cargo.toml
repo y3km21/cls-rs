@@ -26,7 +26,7 @@ zerocopy = "0.6"
 
 # web
 console_error_panic_hook = {version = "0.1", optional = true}
-js-sys = {versin = "0.3", optional = true}
+js-sys = {version = "0.3", optional = true}
 serde-wasm-bindgen = {version = "0.4", optional = true}
 wasm-bindgen = {version = "0.2", features = ["serde-serialize"], optional = true}
 wasm-logger = {version = "0.2", optional = true}
