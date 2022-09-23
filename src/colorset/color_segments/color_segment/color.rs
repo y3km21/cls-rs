@@ -12,18 +12,30 @@
 use crate::colorset::common;
 use bytes;
 use nom;
-use serde;
+use serde::{
+    self,
+    ser::{SerializeSeq, SerializeStruct},
+};
 use std::{error, fmt};
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum SerializeMode {
+    Struct,
+    Seq,
+    Hex,
+    HexWithNumberSign,
+}
 
 /// Color
 ///
 /// RGB + Transparency
-#[derive(Debug, PartialEq, Clone, serde::Serialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Color {
     red: u8,
     green: u8,
     blue: u8,
     transparency: bool,
+    serialize_mode: SerializeMode,
 }
 
 impl Color {
@@ -33,6 +45,7 @@ impl Color {
             green,
             blue,
             transparency,
+            serialize_mode: SerializeMode::Struct,
         }
     }
 
@@ -46,6 +59,7 @@ impl Color {
             green,
             blue,
             transparency,
+            serialize_mode: SerializeMode::Struct,
         })
     }
 
@@ -88,6 +102,26 @@ impl Color {
 
     pub fn get_transparency(&self) -> bool {
         self.transparency
+    }
+
+    pub fn set_serialize_mode_struct(&mut self) {
+        self.serialize_mode = SerializeMode::Struct;
+    }
+
+    pub fn set_serialize_mode_seq(&mut self) {
+        self.serialize_mode = SerializeMode::Seq;
+    }
+
+    pub fn set_serialize_mode_hex(&mut self) {
+        self.serialize_mode = SerializeMode::Hex;
+    }
+
+    pub fn set_serialize_mode_hex_with_number_sign(&mut self) {
+        self.serialize_mode = SerializeMode::HexWithNumberSign;
+    }
+
+    pub fn get_serialize_mode(&self) -> &SerializeMode {
+        &self.serialize_mode
     }
 }
 
@@ -167,6 +201,50 @@ fn parse_hex_color(hex_color: &str) -> Result<(u8, u8, u8), ParseHexColorError> 
         let blue = u8::from_str_radix(&hex_color[4..6], 16)
             .map_err(|e| ParseHexColorError::ParseIntError(e))?;
         Ok((red, green, blue))
+    }
+}
+
+impl serde::Serialize for Color {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.serialize_mode {
+            SerializeMode::Seq => {
+                if self.transparency {
+                    let seq = serializer.serialize_seq(None)?;
+                    seq.end()
+                } else {
+                    let mut seq = serializer.serialize_seq(Some(3))?;
+                    seq.serialize_element(&self.red)?;
+                    seq.serialize_element(&self.green)?;
+                    seq.serialize_element(&self.blue)?;
+                    seq.end()
+                }
+            }
+            SerializeMode::Hex => {
+                if self.transparency {
+                    serializer.serialize_str("")
+                } else {
+                    serializer.serialize_str(&self.get_hex_color(false))
+                }
+            }
+            SerializeMode::HexWithNumberSign => {
+                if self.transparency {
+                    serializer.serialize_str("")
+                } else {
+                    serializer.serialize_str(&self.get_hex_color(true))
+                }
+            }
+            SerializeMode::Struct => {
+                let mut color = serializer.serialize_struct("Color", 4)?;
+                color.serialize_field("red", &self.red)?;
+                color.serialize_field("green", &self.green)?;
+                color.serialize_field("blue", &self.blue)?;
+                color.serialize_field("transparency", &self.transparency)?;
+                color.end()
+            }
+        }
     }
 }
 
@@ -273,5 +351,48 @@ mod tests {
                 invs
             )
         }
+    }
+
+    #[test]
+    fn serialize_test() {
+        use serde_json;
+
+        // struct
+        let test_color = Color::new_with_hex_color("#FF8000", false).unwrap();
+        let tc_struct_json = serde_json::to_string(&test_color).unwrap();
+        assert_eq!(
+            tc_struct_json,
+            "{\"red\":255,\"green\":128,\"blue\":0,\"transparency\":false}"
+        );
+
+        // seq
+        let mut test_color = Color::new_with_hex_color("#FF8000", false).unwrap();
+        test_color.set_serialize_mode_seq();
+        let tc_seq_json = serde_json::to_string(&test_color).unwrap();
+        assert_eq!(tc_seq_json, "[255,128,0]");
+        // transparency on
+        test_color.set_transparency(true);
+        let tc_seq_tp_json = serde_json::to_string(&test_color).unwrap();
+        assert_eq!(tc_seq_tp_json, "[]");
+
+        // hex
+        let mut test_color = Color::new_with_hex_color("#FF8000", false).unwrap();
+        test_color.set_serialize_mode_hex();
+        let tc_hex_json = serde_json::to_string(&test_color).unwrap();
+        assert_eq!(tc_hex_json, "\"FF8000\"");
+        // transparecy on
+        test_color.set_transparency(true);
+        let tc_hex_tp_json = serde_json::to_string(&test_color).unwrap();
+        assert_eq!(tc_hex_tp_json, "\"\"");
+
+        // hex with number sign
+        let mut test_color = Color::new_with_hex_color("#FF8000", false).unwrap();
+        test_color.set_serialize_mode_hex_with_number_sign();
+        let tc_hex_with_ns_json = serde_json::to_string(&test_color).unwrap();
+        assert_eq!(tc_hex_with_ns_json, "\"#FF8000\"");
+        // transparency on
+        test_color.set_transparency(true);
+        let tc_hex_with_ns_tp_json = serde_json::to_string(&test_color).unwrap();
+        assert_eq!(tc_hex_with_ns_tp_json, "\"\"");
     }
 }
