@@ -7,6 +7,7 @@ mod wasm {
     pub use js_sys::Uint8Array;
     pub use serde_wasm_bindgen;
 
+    #[allow(dead_code)]
     #[cfg(feature = "web")]
     #[wasm_bindgen]
     pub fn logging_init() {

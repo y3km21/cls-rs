@@ -1,52 +1,103 @@
 //! Colorset
+//!
+//!
 
-pub mod color;
-pub mod name;
+pub mod color_segments;
+pub mod colorset_name;
+pub mod common;
+pub mod web_utils;
 
-use color::{bytes_color_segment, Color, ColorSegment};
 use js_sys::{Boolean, JsString, Number};
-use name::{bytes_colorset_name, ColorsetName};
 use zerocopy::AsBytes;
 
-use crate::utils::{cast_js_number, parse_hex_color, ClsSize, ExtendBytesMut};
 use bytes::{Bytes, BytesMut};
-use nom::{
-    bytes::complete::take, error::FromExternalError, multi::fold_many0, number::complete::le_u32,
-    IResult,
-};
-
-use serde::{Deserialize, Serialize};
-use std::{
-    error::Error,
-    fmt::Display,
-    ops::{Deref, DerefMut},
-};
-
-const CLS_HEADER: [u8; 6] = [0x53, 0x4C, 0x43, 0x43, 0x00, 0x01];
+use nom;
+use serde;
+use web_utils::{cast_js_number, parse_hex_color};
 
 #[cfg(feature = "web")]
 use crate::wasm::*;
 
-use self::color::ColorName;
-
 #[cfg_attr(feature = "web", wasm_bindgen)]
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, serde::Serialize)]
 pub struct Colorset {
-    name: ColorsetName,
-    color_segments: ColorSegments,
+    name: colorset_name::ColorsetName,
+    color_segments: color_segments::ColorSegments,
 }
 
 #[cfg_attr(feature = "web", wasm_bindgen)]
 impl Colorset {
     #[cfg_attr(feature = "web", wasm_bindgen(constructor))]
     pub fn new() -> Colorset {
-        let mut new_colorset_name = ColorsetName::new();
+        let mut new_colorset_name = colorset_name::ColorsetName::new();
         new_colorset_name.set_str("NewColorset").unwrap();
 
         Colorset {
             name: new_colorset_name,
-            color_segments: ColorSegments::new(),
+            color_segments: color_segments::ColorSegments::new(),
         }
+    }
+}
+
+impl Colorset {
+    pub fn as_bytes(&self) -> Bytes {
+        use common::{ClsSize, ExtendBytesMut};
+        let mut colorset_bytes = BytesMut::with_capacity(self.size_in_cls() as usize);
+        self.extend_bytes(&mut colorset_bytes);
+
+        colorset_bytes.freeze()
+    }
+}
+
+impl common::ClsSize for Colorset {
+    fn size_contents_in_cls(&self) -> u32 {
+        6 // color set header 
+            + self.name.size_in_cls()
+            + 4 // u32 of unknown number
+            + self.color_segments.size_in_cls()
+    }
+}
+
+/// CLS File Header
+const CLS_HEADER: [u8; 6] = [0x53, 0x4C, 0x43, 0x43, 0x00, 0x01];
+
+// serialize
+impl common::ExtendBytesMut for Colorset {
+    fn extend_bytes(&self, extended: &mut BytesMut) {
+        // extend cls header
+        extended.extend_from_slice(&CLS_HEADER);
+
+        // extend colorset name
+        self.name.extend_bytes(extended);
+
+        // extend unknown number
+        extended.extend_from_slice(4u32.as_bytes());
+
+        // extend color segments
+        self.color_segments.extend_bytes(extended);
+    }
+}
+
+impl common::TryFromBytes for Colorset {
+    fn try_from_bytes(input: &[u8]) -> nom::IResult<&[u8], Self>
+    where
+        Self: Sized,
+    {
+        use nom::{bytes::complete::take, number::complete::le_u32};
+        // ignore cls header
+        let (input, _) = take(6usize)(input)?;
+        // get colorsetName
+        let (input, colorset_name) = colorset_name::ColorsetName::try_from_bytes(input)?;
+        // ignore unknow val
+        let (input, _) = le_u32(input)?;
+        // get color segments
+        let (input, color_segments) = color_segments::ColorSegments::try_from_bytes(input)?;
+
+        let colorset = Colorset {
+            name: colorset_name,
+            color_segments,
+        };
+        Ok((input, colorset))
     }
 }
 
@@ -112,7 +163,7 @@ impl Colorset {
                     .map_err(|err| JsValue::from(err.to_string()))?;
             } else {
                 *got_opt_c_name = Some(
-                    ColorName::with_str(&color_name)
+                    color_segments::color_segment::color_name::ColorName::with_str(&color_name)
                         .map_err(|err| JsValue::from(err.to_string()))?,
                 );
             }
@@ -199,14 +250,19 @@ impl Colorset {
             .as_bool()
             .map_or(Err(JsValue::from("Invalid Input Boolean")), |tp| Ok(tp))?;
 
-        let new_clr = Color::new(red, green, blue, transparency);
+        let new_clr =
+            color_segments::color_segment::color::Color::new(red, green, blue, transparency);
         let new_clr_name = if color_name.is_empty() {
             None
         } else {
-            Some(ColorName::with_str(&color_name).map_err(|err| JsValue::from(err.to_string()))?)
+            Some(
+                color_segments::color_segment::color_name::ColorName::with_str(&color_name)
+                    .map_err(|err| JsValue::from(err.to_string()))?,
+            )
         };
 
-        let new_clr_segment = ColorSegment::new(new_clr, new_clr_name);
+        let new_clr_segment =
+            color_segments::color_segment::ColorSegment::new(new_clr, new_clr_name);
 
         self.color_segments.push(new_clr_segment);
 
@@ -219,202 +275,34 @@ impl Colorset {
             .as_string()
             .map_or(Err(JsValue::from("Invalid Input String")), |str| Ok(str))?;
 
-        ColorName::validate_str(&color_name).map_err(|err| JsValue::from(err.to_string()))
+        color_segments::color_segment::color_name::ColorName::validate_str(&color_name)
+            .map_err(|err| JsValue::from(err.to_string()))
     }
-}
-
-impl Colorset {
-    pub fn as_bytes(&self) -> Bytes {
-        let mut colorset_bytes = BytesMut::with_capacity(self.size_in_cls() as usize);
-        self.extend_bytes(&mut colorset_bytes);
-
-        colorset_bytes.freeze()
-    }
-}
-
-impl ClsSize for Colorset {
-    fn size_contents_in_cls(&self) -> u32 {
-        6 // color set header 
-            + self.name.size_in_cls()
-            + 4 // u32 of unknown number
-            + self.color_segments.size_in_cls()
-    }
-}
-
-// serialize
-impl ExtendBytesMut for Colorset {
-    fn extend_bytes(&self, extended: &mut BytesMut) {
-        // extend cls header
-        extended.extend_from_slice(&CLS_HEADER);
-
-        // extend colorset name
-        self.name.extend_bytes(extended);
-
-        // extend unknown number
-        extended.extend_from_slice(4u32.as_bytes());
-
-        // extend color segments
-        self.color_segments.extend_bytes(extended);
-    }
-}
-
-// deserialize
-pub fn bytes_colorset(input: &[u8]) -> IResult<&[u8], Colorset> {
-    // ignore cls header
-    let (input, _) = take(6usize)(input)?;
-    // get colorsetName
-    let (input, colorset_name) = bytes_colorset_name(input)?;
-    // ignore unknow val
-    let (input, _) = le_u32(input)?;
-    // get color segments
-    let (input, color_segments) = bytes_color_segments(input)?;
-
-    let colorset = Colorset {
-        name: colorset_name,
-        color_segments,
-    };
-    Ok((input, colorset))
 }
 
 #[cfg(feature = "web")]
 #[wasm_bindgen(js_name = "withUint8Array")]
 pub fn with_uint8_array(arr: Uint8Array) -> Colorset {
+    use self::common::TryFromBytes;
+
     let buf = arr.to_vec();
-    let (_, new_cls) = bytes_colorset(&buf).unwrap(); // Error 処理入れてどうぞ
+    let (_, new_cls) = Colorset::try_from_bytes(&buf).unwrap(); // Error 処理入れてどうぞ
     new_cls
 }
 
-/// ColorSegment
-///
-///
-///
-///
-///
-#[derive(Debug, PartialEq, Serialize)]
-pub struct ColorSegments {
-    val: Vec<ColorSegment>,
-}
+#[cfg(test)]
+mod tests {
+    use super::common::*;
+    use super::Colorset;
 
-impl ColorSegments {
-    pub fn new() -> Self {
-        let mut new_color_segment_vec = Vec::<ColorSegment>::new();
-        new_color_segment_vec.push(ColorSegment::new(
-            Color::new(0, 0, 0, true),
-            Some(ColorName::with_str("Color0").unwrap()),
-        ));
+    #[test]
+    fn colorset_test() {
+        let new_colorset = Colorset::new();
 
-        ColorSegments {
-            val: new_color_segment_vec,
-        }
-    }
+        let cs_b = new_colorset.as_bytes();
 
-    pub fn remove(&mut self, index: usize) -> Result<ColorSegment, ColorSegmentsError> {
-        if index < self.val.len() {
-            Ok(self.val.remove(index))
-        } else {
-            Err(ColorSegmentsError::RemoveIndexError)
-        }
-    }
+        let (_, de_cs) = Colorset::try_from_bytes(cs_b.as_ref()).unwrap();
 
-    pub fn push(&mut self, color_segment: ColorSegment) {
-        self.val.push(color_segment)
+        assert_eq!(de_cs, new_colorset);
     }
 }
-
-impl ClsSize for ColorSegments {
-    fn size_in_cls(&self) -> u32 {
-        4 // u32 of number of colorsegments
-        + 4 // u32 of color segments byte size
-        + self.size_contents_in_cls()
-    }
-
-    fn size_contents_in_cls(&self) -> u32 {
-        self.val
-            .iter()
-            .fold(0, |acc, item| acc + item.size_in_cls())
-    }
-}
-
-// serialize
-impl ExtendBytesMut for ColorSegments {
-    fn extend_bytes(&self, extended: &mut BytesMut) {
-        // extend number of colors
-        let num_colors = self.len() as u32;
-        extended.extend_from_slice(num_colors.as_bytes());
-
-        // extend color segments bytes size
-        extended.extend_from_slice(self.size_contents_in_cls().as_bytes());
-
-        // extend color segments
-        self.iter().for_each(|cs| cs.extend_bytes(extended));
-    }
-}
-
-// deserialize
-pub fn bytes_color_segments(input: &[u8]) -> IResult<&[u8], ColorSegments> {
-    use nom::{error::Error, error::ErrorKind::Fail, Err::Failure};
-    // get number of colors
-    let (input, num_colors) = le_u32(input)?;
-    // ignore color segments bytes
-    let (input, _) = le_u32(input)?;
-    // get colorsegments
-    let (input, color_segment_vec) = fold_many0(
-        bytes_color_segment,
-        Vec::new,
-        |mut acc: Vec<ColorSegment>, item| {
-            acc.push(item);
-            acc
-        },
-    )(input)?;
-
-    if color_segment_vec.is_empty() {
-        return Err(Failure(Error::from_external_error(
-            input,
-            Fail,
-            "Color segments is empty!", // Colorsegments Error
-        )));
-    } else if color_segment_vec.len() as u32 != num_colors {
-        return Err(Failure(Error::from_external_error(
-            input,
-            Fail,
-            "Error in read color segments", // Colorsegments Error
-        )));
-    }
-    Ok((
-        input,
-        ColorSegments {
-            val: color_segment_vec,
-        },
-    ))
-}
-
-impl Deref for ColorSegments {
-    type Target = Vec<ColorSegment>;
-    fn deref(&self) -> &Self::Target {
-        &self.val
-    }
-}
-
-impl DerefMut for ColorSegments {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.val
-    }
-}
-
-#[derive(Debug)]
-pub enum ColorSegmentsError {
-    RemoveIndexError,
-}
-
-impl Display for ColorSegmentsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", {
-            use ColorSegmentsError::*;
-            match self {
-                RemoveIndexError => "Invalid Index, cannot remove.",
-            }
-        })
-    }
-}
-
-impl Error for ColorSegmentsError {}

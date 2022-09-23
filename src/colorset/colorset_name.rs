@@ -2,21 +2,15 @@
 //!
 //!
 
-use crate::utils::{ClsSize, ExtendBytesMut};
-
-use std::{error::Error, fmt::Display, ops::Deref};
-
+use crate::colorset::common;
+use bytes;
 use encoding_rs as enc;
-use nom::{
-    bytes::complete::take,
-    error::FromExternalError,
-    number::complete::{le_u16, le_u32},
-    IResult,
-};
-use serde::Serialize;
+use nom;
+use serde;
+use std::{error, fmt, ops};
 use zerocopy::AsBytes;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, serde::Serialize)]
 pub struct ColorsetName {
     val: String,
 }
@@ -103,7 +97,7 @@ impl ColorsetName {
     }
 }
 
-impl ClsSize for ColorsetName {
+impl common::ClsSize for ColorsetName {
     fn size_in_cls(&self) -> u32 {
         4 + self.size_contents_in_cls()
     }
@@ -118,7 +112,7 @@ impl ClsSize for ColorsetName {
     }
 }
 
-impl ExtendBytesMut for ColorsetName {
+impl common::ExtendBytesMut for ColorsetName {
     fn extend_bytes(&self, extended: &mut bytes::BytesMut) {
         // sjis
         let sjis_buf = self.encode_sjis();
@@ -147,38 +141,43 @@ impl ExtendBytesMut for ColorsetName {
     }
 }
 
-/// Deserialize ColorsetName from &\[u8]
-pub fn bytes_colorset_name(input: &[u8]) -> IResult<&[u8], ColorsetName> {
-    use nom::{error::Error, error::ErrorKind::Fail, Err::Failure};
+impl common::TryFromBytes for ColorsetName {
+    fn try_from_bytes(input: &[u8]) -> nom::IResult<&[u8], Self>
+    where
+        Self: Sized,
+    {
+        use nom::bytes::complete::take;
+        use nom::number::complete::{le_u16, le_u32};
+        use nom::{error::Error, error::ErrorKind::Fail, error::FromExternalError, Err::Failure};
+        // get colorsetname bytesize header
+        let (input, _) = le_u32(input)?;
 
-    // get colorsetname bytesize header
-    let (input, _) = le_u32(input)?;
+        // get sjis name bytesize
+        let (input, sjis_bytes_size) = le_u16(input)?;
+        // ignore sjis bytes
+        let (input, _) = take(sjis_bytes_size as usize)(input)?;
+        // ignore delimiter
+        let (input, _) = le_u32(input)?;
+        // get utf8 name bytesize
+        let (input, utf8_bytes_size) = le_u16(input)?;
+        // get utf8 bytes
+        let (input, utf8_bytes) = take(utf8_bytes_size as usize)(input)?;
 
-    // get sjis name bytesize
-    let (input, sjis_bytes_size) = le_u16(input)?;
-    // ignore sjis bytes
-    let (input, _) = take(sjis_bytes_size as usize)(input)?;
-    // ignore delimiter
-    let (input, _) = le_u32(input)?;
-    // get utf8 name bytesize
-    let (input, utf8_bytes_size) = le_u16(input)?;
-    // get utf8 bytes
-    let (input, utf8_bytes) = take(utf8_bytes_size as usize)(input)?;
+        // conv string
+        let colorset_name_str = String::from_utf8(utf8_bytes.to_owned())
+            .map_err(|err| Failure(Error::from_external_error(input, Fail, err)))?;
 
-    // conv string
-    let colorset_name_str = String::from_utf8(utf8_bytes.to_owned())
-        .map_err(|err| Failure(Error::from_external_error(input, Fail, err)))?;
+        // make ColorsetName
+        let mut colorset_name = ColorsetName::new();
+        colorset_name
+            .set_str(&colorset_name_str)
+            .map_err(|err| Failure(Error::from_external_error(input, Fail, err)))?;
 
-    // make ColorsetName
-    let mut colorset_name = ColorsetName::new();
-    colorset_name
-        .set_str(&colorset_name_str)
-        .map_err(|err| Failure(Error::from_external_error(input, Fail, err)))?;
-
-    Ok((input, colorset_name))
+        Ok((input, colorset_name))
+    }
 }
 
-impl Deref for ColorsetName {
+impl ops::Deref for ColorsetName {
     type Target = String;
     fn deref(&self) -> &Self::Target {
         &self.val
@@ -191,7 +190,7 @@ pub enum ColorsetNameError {
     CharCountExceeded64,
 }
 
-impl Display for ColorsetNameError {
+impl fmt::Display for ColorsetNameError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", {
             use ColorsetNameError::*;
@@ -205,4 +204,37 @@ impl Display for ColorsetNameError {
     }
 }
 
-impl Error for ColorsetNameError {}
+impl error::Error for ColorsetNameError {}
+
+#[cfg(test)]
+mod tests {
+    use super::bytes;
+    use super::common::*;
+    use super::ColorsetName;
+
+    #[test]
+    fn name_test() {
+        let str0 = "\u{3400}test\u{1f5ff}set\u{0414}";
+        let str1 = "\u{1f5ff}testset";
+        let str3 = "ßtest\u{3400}";
+        let str4 = std::iter::repeat("あ").take(64).collect::<String>();
+        let mut str5 = std::iter::repeat("t").take(62).collect::<String>();
+        str5.push('\u{1f5ff}');
+
+        [str0, str1, str3, &str4, &str5]
+            .into_iter()
+            .map(|str| {
+                let mut csn = ColorsetName::new();
+                csn.set_str(str).unwrap();
+                csn
+            })
+            .for_each(|csn| {
+                let mut byte_csn = bytes::BytesMut::new();
+                csn.extend_bytes(&mut byte_csn);
+
+                let (_, de_csn) = ColorsetName::try_from_bytes(byte_csn.as_ref()).unwrap();
+
+                assert_eq!(de_csn, csn);
+            });
+    }
+}

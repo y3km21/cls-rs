@@ -1,18 +1,5 @@
-mod color_test;
-mod name_test;
-
-use cls_rs::colorset::{bytes_colorset, Colorset};
-
-#[test]
-fn colorset_test() {
-    let new_colorset = Colorset::new();
-
-    let cs_b = new_colorset.as_bytes();
-
-    let (_, de_cs) = bytes_colorset(cs_b.as_ref()).unwrap();
-
-    assert_eq!(de_cs, new_colorset);
-}
+use cls_rs::colorset::common::*;
+use cls_rs::colorset::Colorset;
 
 #[test]
 fn colorset_test_with_read_file() {
@@ -24,7 +11,7 @@ fn colorset_test_with_read_file() {
 
     let test_file_bytes = fs::read(test_file_path).unwrap();
 
-    let (_, de_cls) = bytes_colorset(&test_file_bytes).unwrap();
+    let (_, de_cls) = Colorset::try_from_bytes(&test_file_bytes).unwrap();
 
     //println!("{:?}", de_cls);
 
